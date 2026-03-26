@@ -1,0 +1,82 @@
+/* RelayPay button styles with CSS custom property theming */
+
+:root {
+  --relay-pay-primary: #6366f1;
+  --relay-pay-primary-hover: #4f46e5;
+  --relay-pay-primary-text: #ffffff;
+  --relay-pay-border-radius: 0.5rem;
+  --relay-pay-font-size: 1rem;
+  --relay-pay-padding-x: 1.5rem;
+  --relay-pay-padding-y: 0.625rem;
+  --relay-pay-transition: 0.15s ease;
+}
+
+/* Dark theme overrides */
+[data-relay-pay-theme='dark'] {
+  --relay-pay-primary: #818cf8;
+  --relay-pay-primary-hover: #6366f1;
+  --relay-pay-primary-text: #ffffff;
+}
+
+.relay-pay-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background-color: var(--relay-pay-primary);
+  color: var(--relay-pay-primary-text);
+  border: none;
+  border-radius: var(--relay-pay-border-radius);
+  font-size: var(--relay-pay-font-size);
+  font-weight: 600;
+  padding: var(--relay-pay-padding-y) var(--relay-pay-padding-x);
+  cursor: pointer;
+  transition: background-color var(--relay-pay-transition),
+    opacity var(--relay-pay-transition),
+    transform var(--relay-pay-transition);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.relay-pay-btn:hover:not(:disabled) {
+  background-color: var(--relay-pay-primary-hover);
+  transform: translateY(-1px);
+}
+
+.relay-pay-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.relay-pay-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.relay-pay-btn:focus-visible {
+  outline: 3px solid var(--relay-pay-primary);
+  outline-offset: 2px;
+}
+
+/* Overlay */
+.relay-pay-overlay {
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+}
+
+/* Spinner animation */
+@keyframes relay-pay-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.relay-pay-spinner {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: relay-pay-spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
