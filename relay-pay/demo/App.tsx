@@ -1,187 +1,228 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { RelayPayButton } from '../src/components/RelayPay';
-import type { TransactionResult } from '../src/types';
+import type { StellarNetwork, TransactionResult } from '../src/types';
 
-// WARNING: This demo uses TESTNET. Do not use real funds.
-// Replace with your own testnet destination address for testing.
-const TESTNET_DEMO_DESTINATION = 'GAHJJJKMOKYE4RVPZEWZTKH5FVI4PA3VL7GK2LFNUBSGBWE3EINNNKV';
+interface PaymentIntent {
+  id: string;
+  destination: string;
+  amount: string;
+  asset: string;
+  memo?: string;
+  network: StellarNetwork;
+  status: 'pending' | 'paid';
+  createdAt: string;
+  txHash?: string;
+  sender?: string;
+}
+
+interface IntentFormState {
+  amount: string;
+  asset: string;
+  memo: string;
+  network: StellarNetwork;
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
 export default function App(): React.ReactElement {
+  const [form, setForm] = useState<IntentFormState>({
+    amount: '10',
+    asset: 'XLM',
+    memo: 'demo-order-001',
+    network: 'testnet',
+  });
+  const [intent, setIntent] = useState<PaymentIntent | null>(null);
+  const [isCreatingIntent, setIsCreatingIntent] = useState(false);
+  const [intentError, setIntentError] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [lastTx, setLastTx] = useState<TransactionResult | null>(null);
-  const [lastError, setLastError] = useState<string | null>(null);
+
+  const intentSummary = useMemo(() => {
+    if (!intent) return null;
+    return `${intent.amount} ${intent.asset} to ${intent.destination.slice(0, 6)}...${intent.destination.slice(-6)}`;
+  }, [intent]);
+
+  const createIntent = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsCreatingIntent(true);
+    setIntentError(null);
+    setPaymentError(null);
+    setLastTx(null);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/payment-intents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        throw new Error(payload.error ?? 'Failed to create payment intent');
+      }
+
+      const payload = (await response.json()) as { intent: PaymentIntent };
+      setIntent(payload.intent);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Unexpected error creating intent';
+      setIntentError(message);
+      setIntent(null);
+    } finally {
+      setIsCreatingIntent(false);
+    }
+  };
+
+  const confirmPayment = async (tx: TransactionResult) => {
+    if (!intent) return;
+
+    const response = await fetch(`${API_BASE_URL}/api/payment-intents/${intent.id}/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        txHash: tx.hash,
+        sender: tx.sourceAccount,
+      }),
+    });
+
+    if (!response.ok) {
+      const payload = (await response.json()) as { error?: string };
+      throw new Error(payload.error ?? 'Failed to confirm payment');
+    }
+
+    const payload = (await response.json()) as { intent: PaymentIntent };
+    setIntent(payload.intent);
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex flex-col items-center justify-center p-8">
-      <div className="max-w-2xl w-full">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-3">
-            ⚡ RelayPay
-          </h1>
-          <p className="text-gray-600 text-lg">
-            Drop-in Stellar payment component demo
+    <main className="min-h-screen bg-slate-950 text-slate-100 py-10 px-4">
+      <div className="mx-auto max-w-5xl grid gap-6 lg:grid-cols-2">
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+          <p className="text-xs uppercase tracking-wider text-indigo-300">RelayPay Revamp</p>
+          <h1 className="mt-2 text-3xl font-bold">Stellar Checkout Frontend + API</h1>
+          <p className="mt-3 text-slate-300 text-sm">
+            This demo now creates payment intents from a backend service and confirms transactions
+            after wallet submission.
           </p>
-          <div className="mt-2 inline-flex items-center gap-1 px-2 py-1 bg-yellow-100 text-yellow-800 rounded text-xs font-medium">
-            🔧 Testnet Mode
-          </div>
-        </div>
 
-        {/* Examples */}
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Basic XLM payment */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-1">Basic XLM Payment</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Simple 10 XLM payment with memo.
-            </p>
-            <RelayPayButton
-              destination={TESTNET_DEMO_DESTINATION}
-              amount="10"
-              asset="XLM"
-              memo="demo-order-001"
-              network="testnet"
-              onSuccess={(tx) => {
-                setLastTx(tx);
-                setLastError(null);
-                console.log('Payment success:', tx);
-              }}
-              onError={(err) => {
-                setLastError(err.message);
-                setLastTx(null);
-                console.error('Payment error:', err);
-              }}
-            />
-          </div>
+          <form className="mt-6 space-y-4" onSubmit={createIntent}>
+            <label className="block text-sm">
+              <span className="text-slate-300">Amount</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-indigo-400"
+                value={form.amount}
+                onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
+                required
+              />
+            </label>
 
-          {/* Custom label */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-1">Custom Label</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Payment button with a custom label.
-            </p>
-            <RelayPayButton
-              destination={TESTNET_DEMO_DESTINATION}
-              amount="25"
-              asset="XLM"
-              label="Checkout with Stellar"
-              network="testnet"
-              onSuccess={(tx) => {
-                setLastTx(tx);
-                setLastError(null);
-              }}
-              onError={(err) => {
-                setLastError(err.message);
-                setLastTx(null);
-              }}
-            />
-          </div>
+            <label className="block text-sm">
+              <span className="text-slate-300">Asset</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-indigo-400"
+                value={form.asset}
+                onChange={(e) => setForm((prev) => ({ ...prev, asset: e.target.value }))}
+                required
+              />
+            </label>
 
-          {/* Dark theme */}
-          <div className="bg-gray-900 rounded-2xl shadow-sm border border-gray-700 p-6">
-            <h2 className="font-semibold text-white mb-1">Dark Theme</h2>
-            <p className="text-sm text-gray-400 mb-4">
-              Using <code className="text-indigo-400">theme="dark"</code> prop.
-            </p>
-            <RelayPayButton
-              destination={TESTNET_DEMO_DESTINATION}
-              amount="5"
-              asset="XLM"
-              theme="dark"
-              network="testnet"
-              onSuccess={(tx) => {
-                setLastTx(tx);
-                setLastError(null);
-              }}
-              onError={(err) => {
-                setLastError(err.message);
-                setLastTx(null);
-              }}
-            />
-          </div>
+            <label className="block text-sm">
+              <span className="text-slate-300">Memo</span>
+              <input
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-indigo-400"
+                value={form.memo}
+                onChange={(e) => setForm((prev) => ({ ...prev, memo: e.target.value }))}
+              />
+            </label>
 
-          {/* Custom class */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-            <h2 className="font-semibold text-gray-900 mb-1">Custom Styling</h2>
-            <p className="text-sm text-gray-500 mb-4">
-              Using <code className="text-indigo-600">className</code> prop.
-            </p>
-            <RelayPayButton
-              destination={TESTNET_DEMO_DESTINATION}
-              amount="1"
-              asset="XLM"
-              label="Tip 1 XLM ☕"
-              className="!bg-amber-500 hover:!bg-amber-600"
-              network="testnet"
-              onSuccess={(tx) => {
-                setLastTx(tx);
-                setLastError(null);
-              }}
-              onError={(err) => {
-                setLastError(err.message);
-                setLastTx(null);
-              }}
-            />
-          </div>
-        </div>
+            <label className="block text-sm">
+              <span className="text-slate-300">Network</span>
+              <select
+                className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 outline-none focus:border-indigo-400"
+                value={form.network}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, network: e.target.value as StellarNetwork }))
+                }
+              >
+                <option value="testnet">testnet</option>
+                <option value="mainnet">mainnet</option>
+              </select>
+            </label>
 
-        {/* Transaction result / error display */}
-        {lastTx && (
-          <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <p className="text-sm font-semibold text-green-800 mb-1">
-              ✅ Last transaction
+            <button
+              type="submit"
+              disabled={isCreatingIntent}
+              className="w-full rounded-lg bg-indigo-500 px-4 py-2 font-semibold text-white hover:bg-indigo-400 disabled:opacity-70"
+            >
+              {isCreatingIntent ? 'Creating intent...' : 'Create payment intent'}
+            </button>
+          </form>
+
+          {intentError && (
+            <p className="mt-4 rounded-lg border border-rose-800 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+              {intentError}
             </p>
-            <dl className="text-xs text-green-700 space-y-0.5">
-              <div>
-                <dt className="inline font-medium">Hash: </dt>
-                <dd className="inline font-mono break-all">{lastTx.hash}</dd>
+          )}
+        </section>
+
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6">
+          <h2 className="text-xl font-semibold">Checkout</h2>
+          {!intent ? (
+            <p className="mt-3 text-sm text-slate-300">
+              Create a payment intent to generate a backend-approved destination and checkout request.
+            </p>
+          ) : (
+            <>
+              <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/70 p-4">
+                <p className="text-xs uppercase tracking-wider text-slate-400">Intent</p>
+                <p className="mt-2 text-sm">{intentSummary}</p>
+                <p className="mt-1 text-xs text-slate-400">ID: {intent.id}</p>
+                <p className="mt-1 text-xs text-slate-400">Status: {intent.status}</p>
               </div>
-              <div>
-                <dt className="inline font-medium">Ledger: </dt>
-                <dd className="inline">{lastTx.ledger}</dd>
-              </div>
-              <div>
-                <dt className="inline font-medium">Amount: </dt>
-                <dd className="inline">
-                  {lastTx.amount} {lastTx.asset}
-                </dd>
-              </div>
-            </dl>
-          </div>
-        )}
 
-        {lastError && (
-          <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-xl">
-            <p className="text-sm font-semibold text-red-800 mb-1">
-              ❌ Last error
+              <div className="mt-4">
+                <RelayPayButton
+                  destination={intent.destination}
+                  amount={intent.amount}
+                  asset={intent.asset}
+                  memo={intent.memo}
+                  network={intent.network}
+                  label={`Pay ${intent.amount} ${intent.asset}`}
+                  onSuccess={async (tx) => {
+                    setPaymentError(null);
+                    setLastTx(tx);
+                    try {
+                      await confirmPayment(tx);
+                    } catch (err) {
+                      setPaymentError(
+                        err instanceof Error ? err.message : 'Failed to confirm payment'
+                      );
+                    }
+                  }}
+                  onError={(err) => {
+                    setLastTx(null);
+                    setPaymentError(err.message);
+                  }}
+                />
+              </div>
+            </>
+          )}
+
+          {paymentError && (
+            <p className="mt-4 rounded-lg border border-rose-800 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+              {paymentError}
             </p>
-            <p className="text-xs text-red-700 break-all">{lastError}</p>
-          </div>
-        )}
+          )}
 
-        {/* Usage snippet */}
-        <div className="mt-8 bg-gray-900 rounded-2xl p-6 text-sm font-mono">
-          <p className="text-gray-400 mb-3 font-sans text-xs uppercase tracking-wider">
-            Usage
-          </p>
-          <pre className="text-green-400 overflow-auto whitespace-pre-wrap">
-{`import { RelayPayButton } from 'relay-pay';
-
-<RelayPayButton
-  destination="GABC...XYZ"
-  amount="10"
-  asset="XLM"
-  memo="order-123"
-  network="testnet"
-  onSuccess={(tx) => console.log(tx)}
-  onError={(err) => console.error(err)}
-/>`}
-          </pre>
-        </div>
-
-        <p className="mt-6 text-center text-xs text-gray-400">
-          ⚠️ This demo runs on Stellar <strong>testnet</strong>. No real funds are used.
-        </p>
+          {lastTx && (
+            <div className="mt-4 rounded-xl border border-emerald-800 bg-emerald-950/30 p-4">
+              <p className="text-sm font-semibold text-emerald-200">Latest transaction</p>
+              <p className="mt-2 break-all text-xs text-emerald-100">Hash: {lastTx.hash}</p>
+              <p className="mt-1 text-xs text-emerald-100">Ledger: {lastTx.ledger}</p>
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

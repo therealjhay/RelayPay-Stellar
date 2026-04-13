@@ -1,0 +1,3 @@
+[workspace]
+members = ["payment-intent"]
+resolver = "2"

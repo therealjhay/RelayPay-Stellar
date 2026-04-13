@@ -1,181 +1,102 @@
-# RelayPay
+# RelayPay Stellar Stack
 
-A drop-in React component for accepting Stellar (XLM) payments with built-in wallet connection, transaction handling, and customization. Similar to Stripe's "Buy Button" but for the Stellar network.
+RelayPay is now a full-stack Stellar checkout starter:
 
----
+1. **Frontend** (`relay-pay`) - React checkout UI and reusable `RelayPayButton` component.
+2. **Backend** (`backend`) - Payment intent API for creating and confirming checkout sessions.
+3. **Contract** (`contracts/payment-intent`) - Soroban smart contract scaffold for on-chain intent tracking.
 
-## Features
+## Architecture
 
-- 🚀 **Zero-config wallet detection** — automatically detects Freighter, Albedo, and Lobstr
-- 💳 **Simple payment flow** — wallet selection → connect → sign → submit
-- ✅ **Toast notifications** — built-in success/error feedback
-- 🎨 **Themeable** — light, dark, and custom CSS variable theming
-- 🔒 **Testnet-first** — safe defaults, no real funds at risk by default
-- 📦 **TypeScript** — fully typed API
+```text
+Frontend (Vite + React) ---> Backend API (Express) ---> Stellar Horizon + Soroban
+```
 
----
+- The frontend requests backend-generated payment intents.
+- The backend issues destination/amount/network metadata and confirms submitted tx hashes.
+- The Soroban contract package is included to evolve intent state from off-chain store to on-chain contract logic.
 
-## Installation
+## Frontend revamp highlights
+
+- New checkout flow in `relay-pay/demo/App.tsx`:
+  - Create payment intent form (`amount`, `asset`, `memo`, `network`)
+  - Intent-aware checkout summary
+  - Wallet payment via `RelayPayButton`
+  - Backend confirmation after successful Stellar submit
+- Vite dev proxy added so frontend can call backend via `/api/*`.
+
+## Backend API
+
+Base URL: `http://localhost:4000`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Service health |
+| `POST` | `/api/payment-intents` | Create payment intent |
+| `GET` | `/api/payment-intents/:id` | Fetch intent |
+| `POST` | `/api/payment-intents/:id/confirm` | Mark intent as paid |
+
+### Create payment intent example
 
 ```bash
-npm install relay-pay
+curl -X POST http://localhost:4000/api/payment-intents \
+  -H "Content-Type: application/json" \
+  -d '{"amount":"10","asset":"XLM","memo":"order-42","network":"testnet"}'
 ```
 
-> **Peer dependencies:** `react >= 18` and `react-dom >= 18` must be installed.
+## Soroban contract scaffold
 
----
+Location: `contracts/payment-intent`
 
-## Quick Start
+Implemented contract methods:
 
-```tsx
-import { RelayPayButton } from 'relay-pay';
+- `initialize(admin)`
+- `create_intent(payer, merchant, amount, asset, memo)`
+- `mark_paid(intent_id, tx_hash)`
+- `get_intent(intent_id)`
 
-function Checkout() {
-  return (
-    <RelayPayButton
-      destination="GABC...XYZ"
-      amount="10"
-      asset="XLM"
-      memo="order-123"
-      onSuccess={(tx) => console.log('Payment successful:', tx)}
-      onError={(err) => console.error('Payment failed:', err)}
-    />
-  );
-}
-```
+This gives contributors a concrete starting point for moving payment intent truth fully on-chain.
 
-> ⚠️ **Testnet by default.** Add `network="mainnet"` only when you are ready for real transactions.
+## Run locally
 
----
-
-## Component API
-
-### `<RelayPayButton />`
-
-| Prop | Type | Default | Description |
-|------|------|---------|-------------|
-| `destination` | `string` | **required** | Stellar destination address |
-| `amount` | `string` | **required** | Payment amount (e.g. `"10"`, `"0.5"`) |
-| `asset` | `string` | `"XLM"` | Asset code (native XLM or issued asset code) |
-| `memo` | `string` | — | Optional memo text attached to the transaction |
-| `network` | `"testnet" \| "mainnet"` | `"testnet"` | Stellar network |
-| `theme` | `"light" \| "dark" \| "custom"` | `"light"` | Visual theme |
-| `label` | `string` | `"Pay {amount} {asset}"` | Button label text |
-| `className` | `string` | — | Additional CSS class(es) |
-| `onSuccess` | `(result: TransactionResult) => void` | — | Called on successful payment |
-| `onError` | `(error: Error) => void` | — | Called on payment failure |
-
----
-
-## Transaction Flow
-
-1. User clicks button → wallet selection modal opens
-2. User selects an installed Stellar wallet → connect request
-3. Payment transaction is built with memo
-4. Wallet requests user signature
-5. Signed transaction is submitted to Horizon
-6. `onSuccess` callback fires with the result
-
----
-
-## Supported Wallets
-
-| Wallet | Detection | Website |
-|--------|-----------|---------|
-| Freighter | `window.freighter` | https://www.freighter.app/ |
-| Albedo | `window.albedo` | https://albedo.link/ |
-| Lobstr | `window.lobstr` | https://lobstr.co/ |
-
----
-
-## Theming
-
-### CSS Variables
-
-Override the default CSS variables for full customisation:
-
-```css
-:root {
-  --relay-pay-primary: #6366f1;
-  --relay-pay-primary-hover: #4f46e5;
-  --relay-pay-primary-text: #ffffff;
-  --relay-pay-border-radius: 0.5rem;
-  --relay-pay-font-size: 1rem;
-  --relay-pay-padding-x: 1.5rem;
-  --relay-pay-padding-y: 0.625rem;
-}
-```
-
-### Dark Mode
-
-```tsx
-<RelayPayButton ... theme="dark" />
-```
-
----
-
-## Hooks (Advanced)
-
-You can use the underlying hooks for custom UI:
-
-### `useWallet()`
-
-```tsx
-import { useWallet } from 'relay-pay';
-
-const { installedWallets, connect, publicKey, isConnected } = useWallet();
-```
-
-### `usePayment(options)`
-
-```tsx
-import { usePayment } from 'relay-pay';
-
-const { status, pay, result, error } = usePayment({
-  destination: 'GABC...XYZ',
-  amount: '10',
-  asset: 'XLM',
-  network: 'testnet',
-});
-```
-
----
-
-## TypeScript Types
-
-```tsx
-import type {
-  RelayPayButtonProps,
-  TransactionResult,
-  WalletProvider,
-  StellarNetwork,
-  PaymentStatus,
-} from 'relay-pay';
-```
-
----
-
-## Development
+### 1) Frontend
 
 ```bash
 cd relay-pay
 npm install
-npm run dev        # Start demo app at http://localhost:3000
-npm run build      # Build demo app
-npm run type-check # TypeScript check
+npm run dev
 ```
 
----
+### 2) Backend
 
-## Security
+```bash
+cd backend
+npm install
+cp .env.example .env
+npm run dev
+```
 
-- ✅ Private keys are **never** stored or transmitted
-- ✅ All inputs are validated before transaction building
-- ✅ Defaults to **testnet** — safe for development
-- ⚠️ Only set `network="mainnet"` after thorough testnet testing
+### 3) Soroban contract (optional for now)
 
----
+```bash
+cd contracts/payment-intent
+cargo build --target wasm32-unknown-unknown --release
+```
 
-## License
+## Existing RelayPay component API
 
-MIT
+You can still use `RelayPayButton` as a standalone component:
+
+```tsx
+import { RelayPayButton } from 'relay-pay';
+
+<RelayPayButton
+  destination="GABC...XYZ"
+  amount="10"
+  asset="XLM"
+  memo="order-123"
+  network="testnet"
+  onSuccess={(tx) => console.log(tx)}
+  onError={(err) => console.error(err)}
+/>;
+```
